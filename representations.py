@@ -1,5 +1,5 @@
 import os
-os.environ["CUDA_VISIBLE_DEVICES"] = "2"
+#os.environ["CUDA_VISIBLE_DEVICES"] = "2"
 from transformers import AutoTokenizer, AutoModel, AdamW, get_linear_schedule_with_warmup
 import torch
 import torch.nn.functional as F
@@ -27,7 +27,7 @@ def clean_html(string: str):
             print("Right mark without Left: " + string)
             break
         # print("Removing " + string[next_left_start: next_right_start + len(right_mark)])
-        clean_html.clean_links.append(string[next_left_start: next_right_start + len(right_mark)])
+        # clean_html.clean_links.append(string[next_left_start: next_right_start + len(right_mark)])
         string = string[:next_left_start] + " " + string[next_right_start + len(right_mark):]
     return string
 
@@ -88,15 +88,16 @@ def sentenceEmb(data_path, new_data_path, max_sent):
     tokenizer = AutoTokenizer.from_pretrained('sentence-transformers/all-mpnet-base-v2')
     model = AutoModel.from_pretrained('sentence-transformers/all-mpnet-base-v2')
     model = model.to(device)
-    sent_representations = []
+    # sent_representations = []
     padded_sent_representations = []
+    sentence_mask = []
 
     with open(data_path, "r") as dataset_len:
         num_docs = len(dataset_len.readlines())
 
     with open(data_path, "r") as dataset:
         # construct the mask (N docs x S sentences; assume each has S=50 sentences and pad at end)
-        sentence_mask = []
+        trimmed = 0
 
         for doc in tqdm(dataset, total=num_docs):
 
@@ -105,11 +106,13 @@ def sentenceEmb(data_path, new_data_path, max_sent):
             # Count number of sentences
             num_sent = len(sents)
             if num_sent > max_sent:
-                print(f'The number of sentences in this document, {num_sent}, is greater than max_sent {max_sent}')
+                # print(f'The number of sentences in this document, {num_sent}, is greater than max_sent {max_sent}')
                 # Since start and ending sentences tend to be the most important, take out some middle sentences
-                end_idx = (num_sent//2) - (max_sent - num_sent)//2
-                start_idx = (num_sent//2) + (max_sent - num_sent)//2
-                sents = sents[:end_idx] + sents[start_idx:]
+                # end_idx = (num_sent//2) - (num_sent - max_sent)//2
+                # start_idx = (num_sent//2) + (num_sent - max_sent)//2
+                # sents = sents[:end_idx] + sents[start_idx:]
+                trimmed += 1
+                sents = sents[:max_sent]
 
             encoded_input = tokenizer(sents, padding=True, truncation=True, return_tensors='pt')
             encoded_input = encoded_input.to(device)
@@ -122,44 +125,45 @@ def sentenceEmb(data_path, new_data_path, max_sent):
             embeddings = mean_pooling(model_output, encoded_input['attention_mask'])
 
             # Normalize embeddings
-            embeddings = F.normalize(embeddings, p=2, dim=1)
+            embeddings = tensor_to_numpy(F.normalize(embeddings, p=2, dim=1))
 
             # Add padded sentences
             if num_sent < max_sent:
-                pad_embeddings = np.concatenate((tensor_to_numpy(embeddings), np.zeros((max_sent - num_sent, args.emb_dim))), axis=0)
+                pad_embeddings = np.concatenate((embeddings, np.zeros((max_sent - num_sent, args.emb_dim))), axis=0)
             else:
-                pad_embeddings = tensor_to_numpy(embeddings)
+                pad_embeddings = embeddings
 
             # Update mask so that padded sentences are not included in attention computation
             curr_mask = np.array([True] * max_sent)
             curr_mask[:num_sent] = False
 
             # Add embeddings to global list
-            sent_representations.append(embeddings)
+            # sent_representations.append(embeddings)
             padded_sent_representations.append(pad_embeddings)
             sentence_mask.append(curr_mask)
 
-        sent_representations = np.array(sent_representations)
+        # sent_representations = np.array(sent_representations)
         padded_sent_representations = np.array(padded_sent_representations)
         sentence_mask = np.array(sentence_mask)
 
+    print(f"Trimmed Documents: {trimmed}")
     class_representations = getClassRepr(args)
+    print("Retrieved Class Representations!")
 
-    with open(os.path.join(new_data_path, "repr.pk"), "wb") as r:
-        repr_pickle = {
-            "sent_representations":sent_representations,
-            "padded_sent_representations": padded_sent_representations,
-            "sentence_mask": sentence_mask
-        }
-        pk.dump(repr_pickle, r, protocol=4)
-        print("Saved initial sentence representations!")
+    # with open(os.path.join(new_data_path, "repr.pk"), "wb") as r:
+    #     repr_pickle = {
+    #         "padded_sent_representations": padded_sent_representations,
+    #         "sentence_mask": sentence_mask
+    #     }
+    #     pk.dump(repr_pickle, r, protocol=4)
+    #     print("Saved initial sentence representations!")
 
-    return sent_representations, padded_sent_representations, sentence_mask, class_representations
+    #return sent_representations, padded_sent_representations, sentence_mask, class_representations
+    return padded_sent_representations, sentence_mask, class_representations
 
-def contextualizedEmb(args, sent_representations, mask, class_repr):
+def contextualizedEmb(args, sent_representations, mask, class_repr, new_data_path):
     sent_representations = torch.from_numpy(sent_representations)
     mask = torch.from_numpy(mask)
-
     dataset = TensorDataset(sent_representations, mask)
     sampler = SequentialSampler(dataset)
     dataset_loader = DataLoader(dataset, sampler=sampler, batch_size=args.batch_size, shuffle=False)
@@ -169,6 +173,8 @@ def contextualizedEmb(args, sent_representations, mask, class_repr):
     total_steps = len(dataset_loader) * args.epochs / args.accum_steps
     optimizer = AdamW(filter(lambda p: p.requires_grad, model.parameters()), lr=1e-5, eps=1e-8)
     scheduler = get_linear_schedule_with_warmup(optimizer, num_warmup_steps=0.1*total_steps, num_training_steps=total_steps)
+
+    print("Starting to train!")
 
     for i in tqdm(range(args.epochs)):
         model.train()
@@ -212,13 +218,15 @@ def contextualizedEmb(args, sent_representations, mask, class_repr):
                 context_doc = torch.cat((context_doc, c_doc), dim=0)
 
 
-    with open(os.path.join(new_data_path, "context_repr.pk"), "wb") as r:
-        repr_pickle = {
-            "contextualized_sent":tensor_to_numpy(context_sent),
-            "contextualized_doc":tensor_to_numpy(context_doc),
-            "class_representations": class_repr
-        }
-        pk.dump(repr_pickle, r, protocol=4)
+    # with open(os.path.join(new_data_path, "context_repr.pk"), "wb") as r:
+    #     repr_pickle = {
+    #         "contextualized_sent":tensor_to_numpy(context_sent),
+    #         "contextualized_doc":tensor_to_numpy(context_doc),
+    #         "class_representations": class_repr
+    #     }
+    #     pk.dump(repr_pickle, r, protocol=4)
+
+    torch.save(model.state_dict(), os.path.join(new_data_path, f"{args.dataset_name}_model_weights.pth"))
 
     return tensor_to_numpy(context_sent), tensor_to_numpy(context_doc), class_repr
 
@@ -226,7 +234,7 @@ def contextualizedEmb(args, sent_representations, mask, class_repr):
 def main(args):
 
     data_path = os.path.join("/shared/data2/pk36/multidim/multigran", args.dataset_name, "dataset.txt")
-    new_data_path = os.path.join("/home/pk36/megclass/intermediate_data", args.dataset_name)
+    new_data_path = os.path.join("/home/pk36/MEGClass/intermediate_data", args.dataset_name)
 
     global device
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -236,8 +244,8 @@ def main(args):
     if not os.path.exists(new_data_path):
         os.makedirs(new_data_path)
 
-    sent_representations, padded_sent_representations, sentence_mask, class_repr = sentenceEmb(data_path, new_data_path, max_sent=args.max_sent)
-    csent, cdoc, class_repr = contextualizedEmb(args, padded_sent_representations, sentence_mask, class_repr)
+    padded_sent_representations, sentence_mask, class_repr = sentenceEmb(data_path, new_data_path, max_sent=args.max_sent)
+    csent, cdoc, class_repr = contextualizedEmb(args, padded_sent_representations, sentence_mask, class_repr, new_data_path)
 
 
 if __name__ == '__main__':
@@ -252,7 +260,7 @@ if __name__ == '__main__':
     parser.add_argument("--batch_size", type=int, default=64, help="Batch size of documents.")
     parser.add_argument("--epochs", type=int, default=5, help="Number of epochs to train for.")
     parser.add_argument("--accum_steps", type=int, default=1, help="For training.")
-    parser.add_argument("--max_sent", type=int, default=500, help="For padding, the max number of sentences within a document.")
+    parser.add_argument("--max_sent", type=int, default=150, help="For padding, the max number of sentences within a document.")
 
     args = parser.parse_args()
     print(vars(args))
