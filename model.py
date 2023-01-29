@@ -41,7 +41,7 @@ class MEGClassModel(nn.Module):
         # convert mask from N x S to N x S x E
         full_mask = (~mask).unsqueeze(-1).expand(X.size())
         exp_sent = torch.exp(self.sent_attention(contextualized_sent)) # N x S x E
-        denom = torch.sum(exp_sent * (full_mask).int().float(), dim=1) # N x 1 x E
-        contextualized_doc = torch.sum((torch.div(exp_sent/denom) * contextualized_sent) * (full_mask), dim=1) # N x 1 x E
+        denom = torch.unsqueeze(torch.sum(exp_sent * (full_mask).int().float(), dim=1), dim=1) # N x 1 x E
+        contextualized_doc = torch.sum((torch.div(exp_sent, denom) * contextualized_sent) * (full_mask), dim=1) # N x 1 x E
 
         return contextualized_sent, contextualized_doc

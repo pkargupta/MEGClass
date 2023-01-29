@@ -12,6 +12,7 @@ from nltk.tokenize import sent_tokenize, word_tokenize
 from model import MEGClassModel
 from torch.utils.data import TensorDataset, DataLoader, SequentialSampler
 
+#### PRE-PROCESSING ####
 
 # mainly for agnews
 def clean_html(string: str):
@@ -44,6 +45,8 @@ def clean_str(string):
     string = re.sub(r"\s{2,}", " ", string)
     return string.strip()
 
+#### HELPER FUNCTIONS ####
+
 def tensor_to_numpy(tensor):
     return tensor.clone().detach().cpu().numpy()
 
@@ -59,7 +62,8 @@ def getClassRepr(args, load=True):
         class_representations = dictionary["class_representations"]
     return class_representations
 
-def contrastive_loss(class_repr, doc_repr, temp=0.2, labels=None, confident=False):
+# Given tensor representations for classes and documents, identify the top class
+def findMaxClass(class_repr, doc_repr, labels=None, confident=False):
     # labels (N x C): each row has either one class with a value = 1 OR all rows are zero meaning not confident enough
 
     class_repr = F.normalize(class_repr, dim=1) # C x emb_dim
@@ -70,20 +74,33 @@ def contrastive_loss(class_repr, doc_repr, temp=0.2, labels=None, confident=Fals
 
     if labels is None:
         # identify closest class i to doc
-        i_sim = torch.max(cos_sim, dim=1) # N x 1
+        i_sim = torch.max(cos_sim, dim=1)[0] # N x 1
     elif (not confident) and (labels is not None):
         i_sim = cos_sim[labels]
     else:
         # get the confident class cos-sim OR get the max cos-sim (1 if no confident class, 0 if yes)
-        i_sim = torch.max(cos_sim * labels, dim=1) + (1 - torch.sum(labels, dim=1)) * torch.max(cos_sim, dim=1)
+        i_sim = torch.max(cos_sim * labels, dim=1)[0] + (1 - torch.sum(labels, dim=1)) * torch.max(cos_sim, dim=1)[0]
+    
+    return i_sim
+
+def contrastive_loss(class_repr, doc_repr, i_sim, temp=0.2):
+    class_repr = F.normalize(class_repr, dim=1) # C x emb_dim
+    doc_repr = F.normalize(doc_repr, dim=1) # N x emb_dim
+
+    # cosine similarity between doc_repr and class_repr
+    cos_sim = torch.mm(doc_repr, class_repr.transpose(0,1)) # N x C
 
     # compute loss
     loss = -torch.log((torch.exp(i_sim)/temp)/torch.sum(torch.exp(cos_sim/temp), dim=1))
 
     return torch.mean(loss)
 
+def cosine_similarity_embeddings(emb_a, emb_b):
+    return np.dot(emb_a, np.transpose(emb_b)) / np.outer(np.linalg.norm(emb_a, axis=1), np.linalg.norm(emb_b, axis=1))
 
-def sentenceEmb(data_path, new_data_path, max_sent):
+#### GENERATING INITIAL SENTENCE EMBEDDINGS ####
+
+def sentenceEmb(data_path, new_data_path, max_sent, device):
     # Load model from HuggingFace Hub
     tokenizer = AutoTokenizer.from_pretrained('sentence-transformers/all-mpnet-base-v2')
     model = AutoModel.from_pretrained('sentence-transformers/all-mpnet-base-v2')
@@ -161,7 +178,7 @@ def sentenceEmb(data_path, new_data_path, max_sent):
     #return sent_representations, padded_sent_representations, sentence_mask, class_representations
     return padded_sent_representations, sentence_mask, class_representations
 
-def contextualizedEmb(args, sent_representations, mask, class_repr, new_data_path):
+def contextualizedEmb(args, sent_representations, mask, class_repr, new_data_path, device, gold_labels):
     sent_representations = torch.from_numpy(sent_representations)
     mask = torch.from_numpy(mask)
     dataset = TensorDataset(sent_representations, mask)
@@ -180,14 +197,16 @@ def contextualizedEmb(args, sent_representations, mask, class_repr, new_data_pat
         model.train()
         total_train_loss = 0
         
-        wrap_dataset_loader = tqdm(dataset_loader)
         model.zero_grad()
-        for j, batch in enumerate(wrap_dataset_loader):
-            input_emb = batch[0].to(device)
+        for j, batch in enumerate(tqdm(dataset_loader)):
+            input_emb = batch[0].to(device).float()
             input_mask = batch[1].to(device)
             
             c_sent, c_doc = model(input_emb, mask=input_mask)
-            loss = contrastive_loss(torch.from_numpy(class_repr), c_doc) / args.accum_steps
+
+            i_sim = findMaxClass(torch.from_numpy(class_repr).float().to(device), c_doc)
+
+            loss = contrastive_loss(torch.from_numpy(class_repr).float().to(device), c_doc, i_sim) / args.accum_steps
 
             total_train_loss += loss
             loss.backward()
@@ -199,36 +218,44 @@ def contextualizedEmb(args, sent_representations, mask, class_repr, new_data_pat
         avg_train_loss = torch.tensor([total_train_loss / len(dataset_loader) * args.accum_steps])
         print(f"Average training loss: {avg_train_loss.mean()}")
 
-    train.eval()
-    context_sent = None
-    context_doc = None
-
-    with torch.no_grad():
-        for batch in tqdm(dataset_loader):
-            input_emb = batch[0].to(device)
-            input_mask = batch[1].to(device)
-
-            c_sent, c_doc = model(input_emb, mask=input_mask)
-
-            if context_sent is None:
-                context_sent = c_sent
-                context_doc = c_doc
-            else:
-                context_sent = torch.cat((context_sent, c_sent), dim=0)
-                context_doc = torch.cat((context_doc, c_doc), dim=0)
-
-
-    # with open(os.path.join(new_data_path, "context_repr.pk"), "wb") as r:
-    #     repr_pickle = {
-    #         "contextualized_sent":tensor_to_numpy(context_sent),
-    #         "contextualized_doc":tensor_to_numpy(context_doc),
-    #         "class_representations": class_repr
-    #     }
-    #     pk.dump(repr_pickle, r, protocol=4)
+    model.eval()
 
     torch.save(model.state_dict(), os.path.join(new_data_path, f"{args.dataset_name}_model_weights.pth"))
 
-    return tensor_to_numpy(context_sent), tensor_to_numpy(context_doc), class_repr
+    print("Starting to evaluate!")
+
+    # TODO: EVALUATION
+
+    #sentence_predictions = []
+    #doc_predictions = []
+
+    with torch.no_grad(), open(os.path.join(new_data_path, "contextualized_sent.txt"), 'w') as fs, open(os.path.join(new_data_path, "contextualized_docs.txt"), 'w') as fd:
+        for batch in tqdm(dataset_loader):
+            input_emb = batch[0].to(device).float()
+            input_mask = batch[1].to(device)
+
+            c_sent, c_doc = model(input_emb, mask=input_mask)
+            c_sent = tensor_to_numpy(c_sent)
+            c_doc = tensor_to_numpy(c_doc)
+
+            # fs.write(str(c_sent))
+            # fs.write("\n")
+
+            # fd.write(str(c_doc))
+            # fd.write("\n")
+
+            #sent_class = cosine_similarity_embeddings(c_sent, class_repr)
+            #doc_class = 
+
+            # if context_sent is None:
+            #     context_sent = c_sent
+            #     context_doc = c_doc
+            # else:
+            #     context_sent = torch.cat((context_sent, c_sent), dim=0)
+            #     context_doc = torch.cat((context_doc, c_doc), dim=0)
+
+    # return tensor_to_numpy(context_sent), tensor_to_numpy(context_doc), class_repr
+    return
 
 
 def main(args):
@@ -236,7 +263,7 @@ def main(args):
     data_path = os.path.join("/shared/data2/pk36/multidim/multigran", args.dataset_name, "dataset.txt")
     new_data_path = os.path.join("/home/pk36/MEGClass/intermediate_data", args.dataset_name)
 
-    global device
+    # global device
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     #device = torch.device(f'cuda:{args.gpu}') if torch.cuda.is_available() else torch.device('cpu')
 
@@ -244,8 +271,12 @@ def main(args):
     if not os.path.exists(new_data_path):
         os.makedirs(new_data_path)
 
-    padded_sent_representations, sentence_mask, class_repr = sentenceEmb(data_path, new_data_path, max_sent=args.max_sent)
-    csent, cdoc, class_repr = contextualizedEmb(args, padded_sent_representations, sentence_mask, class_repr, new_data_path)
+    padded_sent_representations, sentence_mask, class_repr = sentenceEmb(data_path, new_data_path, device, max_sent=args.max_sent)
+
+    with open(os.path.join("/shared/data2/pk36/multidim/multigran", args.dataset_name, "labels.txt"), "r") as l:
+        gold_labels = l.read().splitlines()
+
+    contextualizedEmb(args, padded_sent_representations, sentence_mask, class_repr, new_data_path, device, gold_labels)
 
 
 if __name__ == '__main__':
