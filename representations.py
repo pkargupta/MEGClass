@@ -10,6 +10,8 @@ from tqdm import tqdm
 import numpy as np
 from nltk.tokenize import sent_tokenize, word_tokenize
 from model import MEGClassModel
+from sklearn.metrics.pairwise import cosine_similarity
+from sklearn.metrics import confusion_matrix, f1_score
 from torch.utils.data import TensorDataset, DataLoader, SequentialSampler
 
 #### PRE-PROCESSING ####
@@ -98,9 +100,49 @@ def contrastive_loss(class_repr, doc_repr, i_sim, temp=0.2):
 def cosine_similarity_embeddings(emb_a, emb_b):
     return np.dot(emb_a, np.transpose(emb_b)) / np.outer(np.linalg.norm(emb_a, axis=1), np.linalg.norm(emb_b, axis=1))
 
+def sentenceToClass(sent_repr, class_repr, weights):
+    # sent_repr: N x S x E
+    # class_repr: C x E
+    # weights: N x S # equals 0 for masked sentences
+
+    #cos-sim between (N x S) x E and (C x E) = N x S x C
+    m, n = sent_repr.shape[:2]
+    sentcos = cosine_similarity(sent_repr.reshape(m*n,-1), class_repr).reshape(m,n,-1)
+    sent_to_class = np.argmax(sentcos, axis=2) # N x S
+    sent_to_doc_class = np.sum(np.multiply(sent_to_class, weights), axis=1) # N x 1
+    return sent_to_doc_class
+
+def docToClass(doc_repr, class_repr):
+    # doc_repr: N x E
+    # class_repr: C x E
+
+    #cos-sim between N x E and C x E = N x C
+    doccos = cosine_similarity(doc_repr, class_repr)
+    doc_to_class = np.argmax(doccos, axis=1) # N x 1
+    return doc_to_class
+
+def evaluate_predictions(true_class, predicted_class, output_to_console=True, return_tuple=False):
+    confusion = confusion_matrix(true_class, predicted_class)
+    if output_to_console:
+        print("-" * 80 + "Evaluating" + "-" * 80)
+        print(confusion)
+    f1_macro = f1_score(true_class, predicted_class, average='macro')
+    f1_micro = f1_score(true_class, predicted_class, average='micro')
+    if output_to_console:
+        print("F1 macro: " + str(f1_macro))
+        print("F1 micro: " + str(f1_micro))
+    if return_tuple:
+        return confusion, f1_macro, f1_micro
+    else:
+        return {
+            "confusion": confusion.tolist(),
+            "f1_macro": f1_macro,
+            "f1_micro": f1_micro
+        }
+
 #### GENERATING INITIAL SENTENCE EMBEDDINGS ####
 
-def sentenceEmb(data_path, new_data_path, max_sent, device):
+def sentenceEmb(args, data_path, new_data_path, device):
     # Load model from HuggingFace Hub
     tokenizer = AutoTokenizer.from_pretrained('sentence-transformers/all-mpnet-base-v2')
     model = AutoModel.from_pretrained('sentence-transformers/all-mpnet-base-v2')
@@ -122,14 +164,14 @@ def sentenceEmb(data_path, new_data_path, max_sent, device):
             sents = sent_tokenize(clean_str(doc))
             # Count number of sentences
             num_sent = len(sents)
-            if num_sent > max_sent:
+            if num_sent > args.max_sent:
                 # print(f'The number of sentences in this document, {num_sent}, is greater than max_sent {max_sent}')
                 # Since start and ending sentences tend to be the most important, take out some middle sentences
                 # end_idx = (num_sent//2) - (num_sent - max_sent)//2
                 # start_idx = (num_sent//2) + (num_sent - max_sent)//2
                 # sents = sents[:end_idx] + sents[start_idx:]
                 trimmed += 1
-                sents = sents[:max_sent]
+                sents = sents[:args.max_sent]
 
             encoded_input = tokenizer(sents, padding=True, truncation=True, return_tensors='pt')
             encoded_input = encoded_input.to(device)
@@ -145,13 +187,13 @@ def sentenceEmb(data_path, new_data_path, max_sent, device):
             embeddings = tensor_to_numpy(F.normalize(embeddings, p=2, dim=1))
 
             # Add padded sentences
-            if num_sent < max_sent:
-                pad_embeddings = np.concatenate((embeddings, np.zeros((max_sent - num_sent, args.emb_dim))), axis=0)
+            if num_sent < args.max_sent:
+                pad_embeddings = np.concatenate((embeddings, np.zeros((args.max_sent - num_sent, embeddings.shape[1]))), axis=0)
             else:
                 pad_embeddings = embeddings
 
             # Update mask so that padded sentences are not included in attention computation
-            curr_mask = np.array([True] * max_sent)
+            curr_mask = np.array([True] * args.max_sent)
             curr_mask[:num_sent] = False
 
             # Add embeddings to global list
@@ -178,7 +220,7 @@ def sentenceEmb(data_path, new_data_path, max_sent, device):
     #return sent_representations, padded_sent_representations, sentence_mask, class_representations
     return padded_sent_representations, sentence_mask, class_representations
 
-def contextualizedEmb(args, sent_representations, mask, class_repr, new_data_path, device, gold_labels):
+def contextualizedEmb(args, sent_representations, mask, class_repr, new_data_path, device):
     sent_representations = torch.from_numpy(sent_representations)
     mask = torch.from_numpy(mask)
     dataset = TensorDataset(sent_representations, mask)
@@ -202,7 +244,7 @@ def contextualizedEmb(args, sent_representations, mask, class_repr, new_data_pat
             input_emb = batch[0].to(device).float()
             input_mask = batch[1].to(device)
             
-            c_sent, c_doc = model(input_emb, mask=input_mask)
+            c_sent, c_doc, _ = model(input_emb, mask=input_mask)
 
             i_sim = findMaxClass(torch.from_numpy(class_repr).float().to(device), c_doc)
 
@@ -224,19 +266,20 @@ def contextualizedEmb(args, sent_representations, mask, class_repr, new_data_pat
 
     print("Starting to evaluate!")
 
-    # TODO: EVALUATION
-
-    #sentence_predictions = []
-    #doc_predictions = []
+    sentence_predictions = None
+    doc_predictions = None
 
     with torch.no_grad(), open(os.path.join(new_data_path, "contextualized_sent.txt"), 'w') as fs, open(os.path.join(new_data_path, "contextualized_docs.txt"), 'w') as fd:
         for batch in tqdm(dataset_loader):
             input_emb = batch[0].to(device).float()
             input_mask = batch[1].to(device)
 
-            c_sent, c_doc = model(input_emb, mask=input_mask)
+            c_sent, c_doc, alpha = model(input_emb, mask=input_mask)
             c_sent = tensor_to_numpy(c_sent)
             c_doc = tensor_to_numpy(c_doc)
+
+            # for row in c_doc:
+            #     fd.write(' '.join(map(str, row)) + '\n')
 
             # fs.write(str(c_sent))
             # fs.write("\n")
@@ -244,18 +287,21 @@ def contextualizedEmb(args, sent_representations, mask, class_repr, new_data_pat
             # fd.write(str(c_doc))
             # fd.write("\n")
 
-            #sent_class = cosine_similarity_embeddings(c_sent, class_repr)
-            #doc_class = 
 
-            # if context_sent is None:
-            #     context_sent = c_sent
-            #     context_doc = c_doc
-            # else:
-            #     context_sent = torch.cat((context_sent, c_sent), dim=0)
-            #     context_doc = torch.cat((context_doc, c_doc), dim=0)
 
+            sent_class = sentenceToClass(c_sent, class_repr, tensor_to_numpy(alpha))
+            doc_class = docToClass(c_doc, class_repr, tensor_to_numpy(alpha))
+            if sentence_predictions is None:
+                sentence_predictions = sent_class
+                doc_predictions = doc_class
+            else:
+                sentence_predictions = np.append(sentence_predictions, sent_class)
+                doc_predictions = np.append(doc_predictions, doc_class)
+            
+
+            
     # return tensor_to_numpy(context_sent), tensor_to_numpy(context_doc), class_repr
-    return
+    return sentence_predictions, doc_predictions
 
 
 def main(args):
@@ -275,8 +321,18 @@ def main(args):
 
     with open(os.path.join("/shared/data2/pk36/multidim/multigran", args.dataset_name, "labels.txt"), "r") as l:
         gold_labels = l.read().splitlines()
+        gold_labels = [int(i) for i in gold_labels]
 
-    contextualizedEmb(args, padded_sent_representations, sentence_mask, class_repr, new_data_path, device, gold_labels)
+
+    sent_to_doc_class, doc_to_class = contextualizedEmb(args, padded_sent_representations, sentence_mask, class_repr, new_data_path, device)
+
+    sent_pred = np.rint(sent_to_doc_class)
+    doc_pred = np.rint(doc_to_class)
+
+    print("Evaluate Predictions (Sentence-Based): ")
+    evaluate_predictions(gold_labels, sent_pred)
+    print("Evaluate Predictions (Document-Based): ")
+    evaluate_predictions(gold_labels, doc_pred)
 
 
 if __name__ == '__main__':
