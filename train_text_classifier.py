@@ -46,10 +46,10 @@ from utils import DATA_FOLDER_PATH, INTERMEDIATE_DATA_FOLDER_PATH
 
 
 class DProcessor(DataProcessor):
-    def __init__(self, task, granularity, train_suffix, test_suffix, curr_iter):
+    def __init__(self, task):
         self.task_name = task
-        self.train_dir = f"{task}_{granularity}.{train_suffix}_{curr_iter}" if train_suffix is not None and train_suffix != "" else task
-        self.test_dir = f"{task}_{granularity}.{test_suffix}" if test_suffix is not None and test_suffix != "" else task
+        self.train_dir = f"{task}"
+        self.test_dir = f"{task}"
         self.labels = list(range(len(load_classnames(os.path.join(DATA_FOLDER_PATH, task)))))
 
     def get_train_examples(self, data_dir):
@@ -61,35 +61,15 @@ class DProcessor(DataProcessor):
             examples.append(InputExample(guid=guid, text_a=text, label=label))
         return examples
 
-    def get_test_examples(self, data_dir, dataset_name, granularity):
+    def get_test_examples(self, data_dir, dataset_name):
         """See base class."""
         examples = []
-        if granularity in ["sent", "hier"]:
-            with open(os.path.join("../data/intermediate_data", self.task_name, f"dataset.pk"), "rb") as f:
-                dataset = pk.load(f)
-            #dataset = load(os.path.join(data_dir, self.test_dir))
-            #cleaned_text = dataset["sent_data"]
-            cleaned_text = dataset["cleaned_text"] # NOTE (NEW) SWAP IF YOU WANT TO EVAL ON SENTENCES
-            labels = load_labels(os.path.join(data_dir, dataset_name))
-
-            # with open(os.path.join(INTERMEDIATE_DATA_FOLDER_PATH, self.test_dir, f"data.{granularity}.{"plm"}.pca64.clusgmm.bbu-12.mixture-100.42.pk"), "rb") as f:
-            #     save_data = pk.load(f)
-            #     labels = save_data["documents_to_class" + "_" + str(args.iter)]
-
-            assert len(cleaned_text) == len(labels)
-
-            for i, (text, label) in enumerate(zip(cleaned_text,
-                                                  labels)):
-                guid = "%s-%s" % ("test", i)
-                examples.append(InputExample(guid=guid, text_a=text, label=label))
-
-        else:
-            with open(os.path.join("../data/intermediate_data", self.task_name, f"dataset.pk"), "rb") as f:
-                dataset = pk.load(f)
-            for i, (text, label) in enumerate(zip(dataset["cleaned_text"],
-                                                  load_labels(os.path.join(data_dir, self.test_dir)))):
-                guid = "%s-%s" % ("test", i)
-                examples.append(InputExample(guid=guid, text_a=text, label=label))
+        with open(os.path.join("/home/pk36/XClass/data/intermediate_data", self.task_name, f"dataset.pk"), "rb") as f:
+            dataset = pk.load(f)
+        for i, (text, label) in enumerate(zip(dataset["cleaned_text"],
+                                              load_labels(os.path.join(data_dir, self.test_dir)))):
+            guid = "%s-%s" % ("test", i)
+            examples.append(InputExample(guid=guid, text_a=text, label=label))
         return examples
 
     def get_labels(self):
@@ -313,7 +293,7 @@ def evaluate(args, model, tokenizer, prefix="", save_res=False):
 
     results = {}
     for eval_task, eval_output_dir in zip(eval_task_names, eval_outputs_dirs):
-        eval_dataset = load_and_cache_examples(args, eval_task, tokenizer, evaluate=True, granularity=args.granularity, curr_iter=args.iter)
+        eval_dataset = load_and_cache_examples(args, eval_task, tokenizer, evaluate=True)
 
         if not os.path.exists(eval_output_dir) and args.local_rank in [-1, 0]:
             os.makedirs(eval_output_dir)
@@ -364,15 +344,15 @@ def evaluate(args, model, tokenizer, prefix="", save_res=False):
 
         # NOTE: (NEW) output the class probabilities into file
         if save_res:
-            if os.path.exists(os.path.join(INTERMEDIATE_DATA_FOLDER_PATH, args.dataset_name, f"classifier_results_{args.granularity}.pk")):
-                with open(os.path.join(INTERMEDIATE_DATA_FOLDER_PATH, args.dataset_name, f"classifier_results_{args.granularity}.pk"), "rb") as f:
+            if os.path.exists(os.path.join(INTERMEDIATE_DATA_FOLDER_PATH, args.dataset_name, f"classifier_results.pk")):
+                with open(os.path.join(INTERMEDIATE_DATA_FOLDER_PATH, args.dataset_name, f"classifier_results.pk"), "rb") as f:
                     class_res = pk.load(f)
                 class_res["res" + "_" + str(args.iter)] = probs.tolist()
             else:
                 class_res = {
                     "res" + "_" + str(args.iter): probs.tolist()
                 }
-            with open(os.path.join(INTERMEDIATE_DATA_FOLDER_PATH, args.dataset_name, f"classifier_results_{args.granularity}.pk"), "wb") as f:
+            with open(os.path.join(INTERMEDIATE_DATA_FOLDER_PATH, args.dataset_name, f"classifier_results.pk"), "wb") as f:
                 pk.dump(class_res, f)
 
         # class_probs = os.path.join(INTERMEDIATE_DATA_FOLDER_PATH, args.dataset_name, str(args.confidence_threshold) + "_" + str(args.granularity) + "_probabilities.json")
@@ -400,24 +380,23 @@ def evaluate(args, model, tokenizer, prefix="", save_res=False):
     return results
 
 
-def load_and_cache_examples(args, task, tokenizer, evaluate=False, granularity="document", curr_iter=0):
+def load_and_cache_examples(args, task, tokenizer, evaluate=False):
     if args.local_rank not in [-1, 0] and not evaluate:
         torch.distributed.barrier()  # Make sure only the first process in distributed training process the dataset, and the others will use the cache
 
-    processor = processors[task](task=task, granularity=granularity, train_suffix=args.train_suffix, test_suffix=args.test_suffix, curr_iter=args.iter)
+    processor = processors[task](task=task)
     output_mode = output_modes[task]
     # Load data features from cache or dataset file
 
-    train_dir = f"{task}_{granularity}.{args.train_suffix}_{curr_iter}" if args.train_suffix is not None and args.train_suffix != "" else task
+    train_dir = f"{task}" if args.train_suffix is not None and args.train_suffix != "" else task
     #train_dir = "TANAYAGNews_pca64.clusgmm.bbu-12.mixture-100.42.0.5"
-    test_dir = f"{task}_{granularity}.{args.test_suffix}_{curr_iter}" if args.test_suffix is not None and args.test_suffix != "" else task
+    test_dir = f"{task}" if args.test_suffix is not None and args.test_suffix != "" else task
 
     cached_features_file = os.path.join(
-        args.data_dir,
+        args.test_data_dir if evaluate else args.train_data_dir,
         train_dir if (not evaluate and train_dir is not None) else test_dir,
-        "cached_{}_{}_{}_{}".format(
+        "cached_{}_{}_{}".format(
             "test" if evaluate else "train",
-            granularity,
             list(filter(None, args.model_name_or_path.split("/"))).pop(),
             str(args.max_seq_length),
         ),
@@ -427,10 +406,10 @@ def load_and_cache_examples(args, task, tokenizer, evaluate=False, granularity="
         logger.info("Loading features from cached file %s", cached_features_file)
         features = torch.load(cached_features_file)
     else:
-        logger.info("Creating features from dataset file at %s", args.data_dir)
+        logger.info("Creating features from dataset file at %s", args.train_data_dir)
         label_list = processor.get_labels()
         examples = (
-            processor.get_test_examples(args.data_dir, args.dataset_name, granularity) if evaluate else processor.get_train_examples(args.data_dir)
+            processor.get_test_examples(args.test_data_dir, args.dataset_name) if evaluate else processor.get_train_examples(args.train_data_dir)
         )
         features = convert_examples_to_features(
             examples, tokenizer, max_length=args.max_seq_length, label_list=label_list, output_mode=output_mode,
@@ -512,8 +491,7 @@ def main(args):
     # Prepare XNLI task
     if args.dataset_name not in processors:
         raise ValueError("Task not found: %s" % (args.dataset_name))
-    processor = processors[args.dataset_name](task=args.dataset_name, granularity=args.granularity, train_suffix=args.train_suffix,
-                                           test_suffix=args.test_suffix, curr_iter=args.iter)
+    processor = processors[args.dataset_name](task=args.dataset_name)
     args.output_mode = output_modes[args.dataset_name]
     label_list = processor.get_labels()
     num_labels = len(label_list)
@@ -550,7 +528,7 @@ def main(args):
 
     # Training
     if args.do_train:
-        train_dataset = load_and_cache_examples(args, args.dataset_name, tokenizer, evaluate=False, granularity=args.granularity, curr_iter=args.iter)
+        train_dataset = load_and_cache_examples(args, args.dataset_name, tokenizer, evaluate=False)
         global_step, tr_loss = train(args, train_dataset, model, tokenizer)
         logger.info(" global_step = %s, average loss = %s", global_step, tr_loss)
 
@@ -601,7 +579,13 @@ if __name__ == "__main__":
 
     # Required parameters
     parser.add_argument(
-        "--data_dir",
+            "--train_data_dir",
+            default=INTERMEDIATE_DATA_FOLDER_PATH,
+            type=str,
+            help="The input data dir. Should contain the .tsv files (or other data files) for the task.",
+        )
+    parser.add_argument(
+        "--test_data_dir",
         default=DATA_FOLDER_PATH,
         type=str,
         help="The input data dir. Should contain the .tsv files (or other data files) for the task.",
