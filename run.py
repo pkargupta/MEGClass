@@ -17,7 +17,7 @@ def main(args):
     # stm_class_oriented_document_representations.main(args)
 
     start = time.time()
-    megclass.main(args)
+    # megclass.main(args)
     
     print("Training classifier!")
     train_text_classifier.main(args)
