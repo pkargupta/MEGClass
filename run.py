@@ -5,16 +5,18 @@ import argparse
 import time
 import numpy as np
 import megclass, train_text_classifier, train_soft_classifier
+import class_oriented_sent_representations
+import static_representations
 from utils import (DATA_FOLDER_PATH, INTERMEDIATE_DATA_FOLDER_PATH)
 
 def main(args):
     # initialize representations before iterative process: 
 
-    # print("Starting to compute static representations...")
-    # static_representations.main(args)
+    print("Starting to compute static representations...")
+    static_representations.main(args)
 
-    # print("Starting to compute class-oriented document representations...")
-    # stm_class_oriented_document_representations.main(args)
+    print("Starting to compute class-oriented document representations...")
+    class_oriented_sent_representations.main(args)
 
     start = time.time()
     megclass.main(args)
@@ -69,7 +71,7 @@ if __name__ == '__main__':
 
     # class oriented doc repr args
     parser.add_argument("--attention_mechanism", type=str, default="mixture")
-    parser.add_argument("--do_sent", type=str, default="no")
+    parser.add_argument("--do_sent", type=str, default="yes")
     parser.add_argument("--T", type=int, default=100)
 
     # doc-class alignment args

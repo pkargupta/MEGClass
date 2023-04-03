@@ -6,9 +6,15 @@ from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.metrics import confusion_matrix, f1_score
 import torch
 from shutil import copyfile
+from transformers import BertModel, BertTokenizer
 
 DATA_FOLDER_PATH = "/shared/data2/pk36/multidim/multigran/"
 INTERMEDIATE_DATA_FOLDER_PATH = "/home/pk36/MEGClass/intermediate_data/"
+
+MODELS = {
+    'bbc': (BertModel, BertTokenizer, 'bert-base-cased'),
+    'bbu': (BertModel, BertTokenizer, 'bert-base-uncased')
+}
 
 
 def tensor_to_numpy(tensor):
@@ -227,4 +233,9 @@ def updateClassSet(confident_docs, doc_emb, class_set):
         doc_ind = [d[1] for d in confident_docs[i]]
         class_set[i] = np.concatenate((np.expand_dims(class_set[i][0], axis=0), doc_emb[doc_ind, :]), axis=0)
     return
-    
+
+def cosine_similarity_embeddings(emb_a, emb_b):
+    return np.dot(emb_a, np.transpose(emb_b)) / np.outer(np.linalg.norm(emb_a, axis=1), np.linalg.norm(emb_b, axis=1))
+
+def cosine_similarity_embedding(emb_a, emb_b):
+    return np.dot(emb_a, emb_b) / np.linalg.norm(emb_a) / np.linalg.norm(emb_b)
