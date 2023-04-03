@@ -1,7 +1,7 @@
 # MEGClass: Text Classification with Extremely Weak Supervision via Mutually-Enhancing Text Granularities
 
 ## Setup
-We used python=3.8, torch=1.13.1, and cudatoolkit=11.3. Other packages can be installed using:
+We use python=3.8, torch=1.13.1, cudatoolkit=11.3, and a single NVIDIA RTX A6000 GPU. Other packages can be installed using:
 ```
 pip install -r requirements.txt
 ```
