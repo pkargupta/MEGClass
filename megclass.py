@@ -188,7 +188,7 @@ if __name__ == '__main__':
     parser.add_argument("--emb_dim", type=int, default=768, help="sentence and document embedding dimensions; all-roberta-large-v1 uses 1024.")
     parser.add_argument("--num_heads", type=int, default=2, help="Number of heads to use for MultiHeadAttention.")
     parser.add_argument("--batch_size", type=int, default=64, help="Batch size of documents.")
-    parser.add_argument("--epochs", type=int, default=5, help="Number of epochs to train for.")
+    parser.add_argument("--epochs", type=int, default=4, help="Number of epochs to train for.")
     parser.add_argument("--accum_steps", type=int, default=1, help="For training.")
     parser.add_argument("--max_sent", type=int, default=150, help="For padding, the max number of sentences within a document.")
     parser.add_argument("--temp", type=float, default=0.1, help="temperature scaling factor; regularization")

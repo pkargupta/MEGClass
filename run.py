@@ -4,7 +4,7 @@ import pickle as pk
 import argparse
 import time
 import numpy as np
-import megclass, train_text_classifier
+import megclass, train_text_classifier, train_soft_classifier
 from utils import (DATA_FOLDER_PATH, INTERMEDIATE_DATA_FOLDER_PATH)
 
 def main(args):
@@ -17,10 +17,14 @@ def main(args):
     # stm_class_oriented_document_representations.main(args)
 
     start = time.time()
-    # megclass.main(args)
+    megclass.main(args)
     
-    print("Training classifier!")
-    train_text_classifier.main(args)
+    if args.soft:
+        print("Training classifier with soft labels!")
+        train_soft_classifier.main(args)
+    else:
+        print("Training classifier with hard labels!")
+        train_text_classifier.main(args)
 
     print("Total Time:", (time.time()-start)/60)
 
@@ -34,9 +38,10 @@ if __name__ == '__main__':
     parser.add_argument("--epochs", type=int, default=5, help="Number of epochs to train for.")
     parser.add_argument("--accum_steps", type=int, default=1, help="For training.")
     parser.add_argument("--max_sent", type=int, default=150, help="For padding, the max number of sentences within a document.")
-    parser.add_argument("--temp", type=float, default=0.2, help="temperature scaling factor; regularization")
+    parser.add_argument("--temp", type=float, default=0.1, help="temperature scaling factor; regularization")
     parser.add_argument("--lr", type=float, default=1e-3, help="learning rate for training contextualized embeddings.")
     parser.add_argument("--iters", type=int, default=1, help="number of iters for re-training embeddings.")
+    parser.add_argument("--k", type=float, default=0.075, help="Top k percent docs added to class set.")
     parser.add_argument(
             "--train_data_dir",
             default=INTERMEDIATE_DATA_FOLDER_PATH,
@@ -50,11 +55,6 @@ if __name__ == '__main__':
         help="The input data dir. Should contain the .tsv files (or other data files) for the task.",
     )
 
-
-
-
-
-
     # general args and static repr args
     parser.add_argument("--gpu", type=int, default=1)
     parser.add_argument("--dataset_name", type=str, required=True)
@@ -65,6 +65,7 @@ if __name__ == '__main__':
     parser.add_argument("--emb", type=str, default='plm')
     parser.add_argument("--vocab_min_occurrence", type=int, default=5)
     parser.add_argument("--layer", type=int, default=12)
+    parser.add_argument("--soft", action="store_true", help="Whether to run training.")
 
     # class oriented doc repr args
     parser.add_argument("--attention_mechanism", type=str, default="mixture")
@@ -81,8 +82,7 @@ if __name__ == '__main__':
     # prep text classifier dataset args
     parser.add_argument("--suffix", type=str, default="pca64.clusgmm.bbu-12.mixture.42")
     parser.add_argument("--confidence_threshold", type=float, default=2, help="Training data confidence threshold.")
-    parser.add_argument("--doc_thresh", type=float, default=2, help="Training data confidence threshold.")
-    parser.add_argument("--sent_thresh", type=float, default=1.95, help="Training data confidence threshold.")
+    parser.add_argument("--doc_thresh", type=float, default=0.5, help="Pseudo-training dataset threshold.")
     parser.add_argument("--granularity", default="document", help="Select either \"sent\" or \"document\".")
     parser.add_argument("--repr", default="plm") # make this into a list of representation types
 
@@ -235,12 +235,6 @@ if __name__ == '__main__':
     args.per_gpu_eval_batch_size = 32
     args.logging_steps = 100000
     args.save_steps = -1
-
-    # comment out if no cate
-    # args.cate_emb = "emb_topics_w.txt"
-    # args.attention_mechanism = "cate"
-    # args.representation = "cate"
-    # args.repr = "cate"
 
     print(vars(args))
     main(args)

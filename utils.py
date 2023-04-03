@@ -6,7 +6,9 @@ from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.metrics import confusion_matrix, f1_score
 import torch
 from shutil import copyfile
-from utils import DATA_FOLDER_PATH, INTERMEDIATE_DATA_FOLDER_PATH
+
+DATA_FOLDER_PATH = "/shared/data2/pk36/multidim/multigran/"
+INTERMEDIATE_DATA_FOLDER_PATH = "/home/pk36/MEGClass/intermediate_data/"
 
 
 def tensor_to_numpy(tensor):
