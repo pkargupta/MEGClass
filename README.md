@@ -1,11 +1,20 @@
 # MEGClass: Text Classification with Extremely Weak Supervision via Mutually-Enhancing Text Granularities
 
+## Setup
+We used python=3.8, torch=1.13.1, and cudatoolkit=11.3. Other packages can be installed using:
+```
+pip install -r requirements.txt
+```
+
+Specify the variables `DATA_FOLDER_PATH` and `INTERMEDIATE_DATA_FOLDER_PATH` within `utils.py`. `DATA_FOLDER_PATH` should be where your datasets are saved (all provided within the `datasets/` folder) and `INTERMEDIATE_DATA_FOLDER_PATH` is where all of the intermediate data is stored (e.g. pickle files for class-oriented sentence and class representations, where the final pseudo-training dataset is stored).
+
+## Training
 In order to learn the contextualized sentence and document representations for a specific dataset (in this case, 20News), run the following command:
 
 ```
 time CUDA_VISIBLE_DEVICES=[gpu] python run.py --gpu [gpu] --dataset_name 20News
 ```
-
+### Arguments
 The following are the primary arguments for MEGClass
 
 - `dataset_name`
@@ -18,6 +27,6 @@ The following are the primary arguments for MEGClass
 - `temp` $\rightarrow$ default=0.1; Temperature scaling factor; regularization.
 - `lr` $\rightarrow$ default=1e-3, Learning rate for training contextualized embeddings.
 - `iters` $\rightarrow$ default=1; Number of iterations of iterative feedback.
-- `k` $\rightarrow$ default=0.075; Top k percent docs added to class set.
+- `k` $\rightarrow$ default=0.075; Top k proportion of docs added to each class set (7.5%).
 - `doc_thresh` $\rightarrow$ default=0.5; Pseudo-training dataset threshold.
 - `pca` $\rightarrow$ default=64; Number of dimensions projected to in PCA, -1 means not doing PCA.
