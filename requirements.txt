@@ -1,0 +1,9 @@
+numpy
+scipy
+torch==1.13.1
+tqdm
+scikit-learn
+sentencepiece==0.1.91
+transformers==3.0.2
+tensorboardX
+nltk
