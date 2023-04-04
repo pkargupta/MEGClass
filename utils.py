@@ -71,7 +71,7 @@ def getSentClassRepr(args):
         dictionary = pk.load(f)
         class_repr = dictionary["class_representations"]
         sent_repr = dictionary["sent_representations"]
-        if (dictionary.has_key("document_representations")):
+        if ("document_representations" in dictionary):
             doc_repr = dictionary["document_representations"]
             return doc_repr, sent_repr, class_repr
         else:
@@ -222,6 +222,7 @@ def generateDataset(documents_to_class, ranks, class_dist, num_classes, cleaned_
     probs = [class_dist[i] for i in selected]
     ###
     gold_classes = [gold_labels[i] for i in selected]
+    print(f"Threshold {thresh*100}% Evaluation: ")
     evaluate_predictions(gold_classes, classes)
     ###
     if write:

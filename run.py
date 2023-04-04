@@ -13,10 +13,10 @@ def main(args):
     # initialize representations before iterative process: 
 
     print("Starting to compute static representations...")
-    static_representations.main(args)
+    # static_representations.main(args)
 
     print("Starting to compute class-oriented document representations...")
-    class_oriented_sent_representations.main(args)
+    # class_oriented_sent_representations.main(args)
 
     start = time.time()
     megclass.main(args)
@@ -28,7 +28,7 @@ def main(args):
         print("Training classifier with hard labels!")
         train_text_classifier.main(args)
 
-    print("Total Time:", (time.time()-start)/60)
+    print(f"Total Time: {(time.time()-start)/60} minutes")
 
 
 if __name__ == '__main__':
@@ -37,12 +37,12 @@ if __name__ == '__main__':
     parser.add_argument("--emb_dim", type=int, default=768, help="sentence and document embedding dimensions; all-roberta-large-v1 uses 1024.")
     parser.add_argument("--num_heads", type=int, default=2, help="Number of heads to use for MultiHeadAttention.")
     parser.add_argument("--batch_size", type=int, default=64, help="Batch size of documents.")
-    parser.add_argument("--epochs", type=int, default=5, help="Number of epochs to train for.")
+    parser.add_argument("--epochs", type=int, default=4, help="Number of epochs to train for.")
     parser.add_argument("--accum_steps", type=int, default=1, help="For training.")
     parser.add_argument("--max_sent", type=int, default=150, help="For padding, the max number of sentences within a document.")
     parser.add_argument("--temp", type=float, default=0.1, help="temperature scaling factor; regularization")
     parser.add_argument("--lr", type=float, default=1e-3, help="learning rate for training contextualized embeddings.")
-    parser.add_argument("--iters", type=int, default=1, help="number of iters for re-training embeddings.")
+    parser.add_argument("--iters", type=int, default=4, help="number of iters for re-training embeddings.")
     parser.add_argument("--k", type=float, default=0.075, help="Top k percent docs added to class set.")
     parser.add_argument(
             "--train_data_dir",
@@ -63,11 +63,10 @@ if __name__ == '__main__':
     parser.add_argument("--seeds", type=str, required=False, default="seeds.txt")
     parser.add_argument("--random_state", type=int, default=42)
     parser.add_argument("--lm_type", type=str, default='bbu')
-    parser.add_argument("--cate_emb", type=str, default=None)
     parser.add_argument("--emb", type=str, default='plm')
     parser.add_argument("--vocab_min_occurrence", type=int, default=5)
     parser.add_argument("--layer", type=int, default=12)
-    parser.add_argument("--soft", action="store_true", help="Whether to run training.")
+    parser.add_argument("--soft", action="store_true", help="Whether to run use soft pseudo-labels for final fine-tuning.")
 
     # class oriented doc repr args
     parser.add_argument("--attention_mechanism", type=str, default="mixture")
@@ -222,10 +221,10 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
 
-    args.suffix = f"pca{args.pca}.clusgmm.bbu-12.mixture.42.{args.sent_thresh}"
+    args.suffix = f"pca{args.pca}.bbu-12.mixture.42"
 
     if args.train_suffix is None:
-        args.train_suffix = f"pca{args.pca}.clusgmm.bbu-12.mixture.42.{args.sent_thresh}"
+        args.train_suffix = f"pca{args.pca}.bbu-12.mixture.42"
 
 
     if args.output_dir is None:

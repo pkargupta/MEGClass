@@ -174,6 +174,7 @@ def main(args):
 
             # recompute target class distribution based on updated contextualized sent repr, sentence weights, and class set
             curr_class_weights = getTargetClassSet(updated_sent_repr, doc_lengths, class_set, alpha=updated_sent_weights, set_weights=None)
+            print(f"Iter {i+1} Target Class Distribution Evaluation:")
             evaluate_predictions(gold_labels, np.argmax(curr_class_weights, axis=1))
     
 

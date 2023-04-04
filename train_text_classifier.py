@@ -64,7 +64,7 @@ class DProcessor(DataProcessor):
     def get_test_examples(self, data_dir, dataset_name):
         """See base class."""
         examples = []
-        with open(os.path.join("/home/pk36/XClass/data/intermediate_data", self.task_name, f"dataset.pk"), "rb") as f:
+        with open(os.path.join(INTERMEDIATE_DATA_FOLDER_PATH, self.task_name, f"dataset.pk"), "rb") as f:
             dataset = pk.load(f)
         for i, (text, label) in enumerate(zip(dataset["cleaned_text"],
                                               load_labels(os.path.join(data_dir, self.test_dir)))):
@@ -372,7 +372,7 @@ def evaluate(args, model, tokenizer, prefix="", save_res=False):
             print("***** Eval results *****")
             for key in sorted(result.keys()):
                 logger.info("  %s = %s", key, str(result[key]))
-                print(key, "=", str(result[key]))
+                # print(key, "=", str(result[key]))
                 writer.write("%s = %s\n" % (key, str(result[key])))
         output_labels_file = os.path.join(eval_output_dir, prefix, "eval_labels.json")
         with open(output_labels_file, "w") as writer:
@@ -389,7 +389,6 @@ def load_and_cache_examples(args, task, tokenizer, evaluate=False):
     # Load data features from cache or dataset file
 
     train_dir = f"{task}" if args.train_suffix is not None and args.train_suffix != "" else task
-    #train_dir = "TANAYAGNews_pca64.clusgmm.bbu-12.mixture-100.42.0.5"
     test_dir = f"{task}" if args.test_suffix is not None and args.test_suffix != "" else task
 
     cached_features_file = os.path.join(

@@ -11,6 +11,9 @@ import nltk
 from preprocessing_utils import load
 from utils import DATA_FOLDER_PATH, INTERMEDIATE_DATA_FOLDER_PATH, MODELS, tensor_to_numpy
 
+""" Identifying contextualized and static word representations.
+    Adapted from `X-Class: https://github.com/ZihanWangKi/XClass`"""
+
 
 def prepare_sentence(tokenizer, text, lm_type='bbu'):
     # setting for BERT
@@ -196,7 +199,7 @@ def main(args):
         
         if args.do_sent == "yes":
             dataset["sent_data"] = sent_data
-            print("SENTENCE INFO!!! ", len(sent_data), len(sent_tokenization_info))
+            print(f"SENTENCE INFO! # of docs: {len(sent_data)}, # of sentences: {len(sent_tokenization_info)}")
 
         word_avg = {}
         for k,v in word_rep.items():

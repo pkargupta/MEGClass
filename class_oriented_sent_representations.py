@@ -15,6 +15,9 @@ from utils import (DATA_FOLDER_PATH, INTERMEDIATE_DATA_FOLDER_PATH, MODELS,
                    evaluate_predictions, tensor_to_numpy)
 from preprocessing_utils import load_classnames
 
+""" Constructing class-oriented sentence and class representations.
+    Adapted from `X-Class: https://github.com/ZihanWangKi/XClass`"""
+
 def seedError(word):
     print("ERROR!", word, "was not found in the vocabulary!")
     exit()

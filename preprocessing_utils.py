@@ -7,7 +7,10 @@ from collections import Counter
 
 import numpy as np
 from tqdm import tqdm
-from utils import DATA_FOLDER_PATH, INTERMEDIATE_DATA_FOLDER_PATH
+from nltk.tokenize import sent_tokenize
+
+from utils import INTERMEDIATE_DATA_FOLDER_PATH, DATA_FOLDER_PATH
+
 
 # mainly for agnews
 def clean_html(string: str):
@@ -39,14 +42,22 @@ def clean_email(string: str):
 def clean_str(string):
     string = clean_html(string)
     string = clean_email(string)
-    string = re.sub(r"[^A-Za-z0-9(),.!?\"\']", " ", string)
+    string = re.sub(r'http\S+', '', string)
+    string = re.sub(r"[^A-Za-z0-9(),.!?\_\-\"\']", " ", string)
     string = re.sub(r"\s{2,}", " ", string)
     return string.strip()
 
 
-def load_clean_text(data_dir):
+def load_clean_text(data_dir, granularity="document"):
     text = load_text(data_dir)
-    return [clean_str(doc) for doc in text]
+    docs = [clean_str(doc) for doc in text]
+    if granularity == "sent":
+        sentences = []
+        for doc in docs:
+            sentences.extend([s for s in sent_tokenize(doc)])
+        return sentences
+    else:
+        return docs
 
 
 def load_text(data_dir):
@@ -60,6 +71,10 @@ def load_labels(data_dir):
         labels = list(map(lambda x: int(x.strip()), label_file.readlines()))
     return labels
 
+def load_probs(data_dir):
+    with open(os.path.join(data_dir, 'probs.txt'), mode='r', encoding='utf-8') as label_file:
+        probs = list(map(lambda x: float(x.strip()), label_file.readlines()))
+    return probs
 
 def load_classnames(data_dir):
     with open(os.path.join(data_dir, 'classes.txt'), mode='r', encoding='utf-8') as classnames_file:
@@ -86,6 +101,7 @@ def text_statistics(text, name="default"):
 
 def load(dataset_name):
     data_dir = os.path.join(DATA_FOLDER_PATH, dataset_name)
+    print("DATA DIRECTORY:", data_dir)
     text = load_text(data_dir)
     class_names = load_classnames(data_dir)
     text = [s.strip() for s in text]
