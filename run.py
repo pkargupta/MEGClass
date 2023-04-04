@@ -13,10 +13,10 @@ def main(args):
     # initialize representations before iterative process: 
 
     print("Starting to compute static representations...")
-    # static_representations.main(args)
+    static_representations.main(args)
 
     print("Starting to compute class-oriented document representations...")
-    # class_oriented_sent_representations.main(args)
+    class_oriented_sent_representations.main(args)
 
     start = time.time()
     megclass.main(args)
