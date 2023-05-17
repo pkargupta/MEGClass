@@ -263,7 +263,7 @@ def main(args):
                 #class_words_representations = [[word_rep[word_to_index[w]] if w in word_to_index.keys() else seedError(w) for w in class_words[cls]] for cls in range(len(class_words))]
                 class_words = {c[0]:c for c in class_words}
             else: # ignore, this is if you want to expand the keyword set
-                with open(os.path.join(data_folder, f"document_repr_lm-{args.lm_type}-{args.layer}-{args.attention_mechanism}.pk"), "rb") as f:
+                with open(os.path.join(data_folder, f"document_repr_lm-{args.lm_type}-{args.layer}-{args.attention_mechanism}-plm.pk"), "rb") as f:
                     dataset = pk.load(f)
                     class_words = dataset["class_words"]
                     class_words_representations = dataset["class_representations"]
@@ -281,8 +281,6 @@ def main(args):
     model.cuda()
 
     # compute sentence representations
-    ext = "cate" if args.cate_emb is not None else "plm"
-
     if args.do_sent == "yes":
         sent_representations = []
         for i, _sent_tokenization_info in tqdm(enumerate(sent_tokenization_info), total=len(sent_tokenization_info)):
@@ -298,7 +296,7 @@ def main(args):
         print("Finish getting sentence representations")
 
         with open(os.path.join(data_folder,
-                               f"document_repr_lm-{args.lm_type}-{args.layer}-{args.attention_mechanism}-{ext}.pk"),
+                               f"document_repr_lm-{args.lm_type}-{args.layer}-{args.attention_mechanism}-plm.pk"),
                   "wb") as f:
             pk.dump({
                 "class_words": class_words,
@@ -320,7 +318,7 @@ def main(args):
         print("Finish getting document representations")
 
         with open(os.path.join(data_folder,
-                               f"document_repr_lm-{args.lm_type}-{args.layer}-{args.attention_mechanism}-{ext}.pk"),
+                               f"document_repr_lm-{args.lm_type}-{args.layer}-{args.attention_mechanism}-plm.pk"),
                   "wb") as f:
             pk.dump({
                 "class_words": class_words,
