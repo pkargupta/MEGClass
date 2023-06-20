@@ -7,7 +7,7 @@ import numpy as np
 import megclass, train_text_classifier, train_soft_classifier
 import class_oriented_sent_representations
 import static_representations
-from utils import (DATA_FOLDER_PATH, INTERMEDIATE_DATA_FOLDER_PATH)
+from utils import (DATA_FOLDER_PATH, TEST_DATA_FOLDER_PATH, INTERMEDIATE_DATA_FOLDER_PATH)
 
 def main(args):
     # initialize representations before iterative process: 
@@ -52,7 +52,7 @@ if __name__ == '__main__':
         )
     parser.add_argument(
         "--test_data_dir",
-        default=DATA_FOLDER_PATH,
+        default=TEST_DATA_FOLDER_PATH,
         type=str,
         help="The input data dir. Should contain the .tsv files (or other data files) for the task.",
     )

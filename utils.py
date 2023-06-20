@@ -8,8 +8,9 @@ import torch
 from shutil import copyfile
 from transformers import BertModel, BertTokenizer
 
-DATA_FOLDER_PATH = "/shared/data2/pk36/multidim/multigran/"
-INTERMEDIATE_DATA_FOLDER_PATH = "/home/pk36/MEGClass/intermediate_data/"
+DATA_FOLDER_PATH = "/home/komarlu2/MEGClass/datasets/train_datasets/"
+TEST_DATA_FOLDER_PATH = "/home/komarlu2/MEGClass/datasets/test_datasets/"
+INTERMEDIATE_DATA_FOLDER_PATH = "/home/komarlu2/MEGClass/intermediate_data/"
 
 MODELS = {
     'bbc': (BertModel, BertTokenizer, 'bert-base-cased'),
