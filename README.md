@@ -26,7 +26,7 @@ The following are the primary arguments for MEGClass
 - `max_sent` $\rightarrow$ default=150; For padding, the max number of sentences within a document.
 - `temp` $\rightarrow$ default=0.1; Temperature scaling factor; regularization.
 - `lr` $\rightarrow$ default=1e-3, Learning rate for training contextualized embeddings.
-- `iters` $\rightarrow$ default=1; Number of iterations of iterative feedback.
+- `iters` $\rightarrow$ default=4; Number of iterations of iterative feedback.
 - `k` $\rightarrow$ default=0.075; Top k proportion of docs added to each class set (7.5%).
 - `doc_thresh` $\rightarrow$ default=0.5; Pseudo-training dataset threshold.
 - `pca` $\rightarrow$ default=64; Number of dimensions projected to in PCA, -1 means not doing PCA.
